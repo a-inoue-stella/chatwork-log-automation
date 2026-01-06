@@ -5,7 +5,7 @@
 const Config = (() => {
 
   // 1. ログを保存するGoogleドキュメントのID
-  const DOC_ID = '1SGbkmm6PXOv-7EEBO-DpdKt1QrmFlQe3Rmxo6tQ8yMw'';
+  const DOC_ID = '1SGbkmm6PXOv-7EEBO-DpdKt1QrmFlQe3Rmxo6tQ8yMw';
 
   // 2. 取得対象のルーム設定
   // ルームを増やす場合は、この配列に要素を追加してください。

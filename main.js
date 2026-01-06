@@ -11,14 +11,14 @@ function fetchAndStockChatwork() {
       if (rawMessages.length === 0) return;
 
       rawMessages.forEach(msg => {
-        const processedText = TextProcessor.process(msg.body);
+        // すでに ChatworkClient 内で処理済みの本文を使用
+        const processedText = msg.processedBody;
         const timestamp = Utilities.formatDate(new Date(msg.send_time * 1000), "JST", "yyyy/MM/dd HH:mm");
         const senderName = msg.account.name;
         const finalContent = `[${timestamp}] ${senderName}:\n${processedText}\n`;
 
-        // Configから取得したDOC_IDを使用
         DocManager.append(DOC_ID, room.tabName, finalContent);
-      });
+        });
       console.log(`Room:${room.id} - ${rawMessages.length}件を処理完了`);
     } catch (e) {
       console.error(`Error in Room:${room.id} - ${e.message}`);

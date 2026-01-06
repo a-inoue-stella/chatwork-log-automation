@@ -1,27 +1,29 @@
 /**
- * TextProcessor 名前空間: Chatworkメッセージの高度なクレンジングと構造化を担う
+ * TextProcessor 名前空間: Chatworkメッセージの高度なクレンジング、構造化、実名解決を担う
  */
 const TextProcessor = (() => {
 
   /**
-   * システムタグを日本語に翻訳し、ノイズを完全に除去する
+   * システムタグを翻訳し、ノイズを除去した上で実名を紐付け、AI解析に最適化されたテキストを返す
    * @param {string} body - Chatworkから取得した生のメッセージ本文
-   * @returns {string} AI解析に最適化された整形済みテキスト
+   * @param {Object} nameMap - { account_id: name } の形式のアカウントIDと名前の対応表
+   * @returns {string} 可読性を最大化した整形済みテキスト
    */
-  function processMessage(body) {
+  function processMessage(body, nameMap = {}) {
     if (!body) return "";
 
     let processedBody = body;
 
     // 1. 引用メタデータの完全削除 [qtmeta ...] 
-    // AIが数値やIDを誤認するのを防ぐ
+    // AIが数値やタイムスタンプIDを誤認するのを防ぐ
     processedBody = processedBody.replace(/\[qtmeta[^\]]*\]/g, '');
 
-    // 2. TO通知の構造化：[To:xxxx] 氏名さん -> 【TO: 氏名さん】
+    // 2. TO通知の構造化：[To:xxxx] 氏名さん -> 【TO: 】氏名さん
+    // Chatworkデフォルトの「さん」を活かし、追加の敬称は付与しない
     processedBody = processedBody.replace(/\[To:\d+\]\s*/g, '【TO: 】');
 
     // 3. システムメッセージ(dtext)の日本語翻訳
-    // AIが「何が起きたか」を文脈として正しく把握できるようにします
+    // AIが組織内のイベント（作成・招待・編集）を文脈として正しく把握できるように言語化する
     const dtextMap = {
       'chatroom_groupchat_created': 'グループチャットが作成されました',
       'chatroom_chatname_is': 'チャット名：',
@@ -40,30 +42,37 @@ const TextProcessor = (() => {
       processedBody = processedBody.replace(reg, dtextMap[key]);
     });
 
-    // 4. [piconname:xxxx] を「（ユーザーID:xxxx）」に一時置換
-    // ※名前の完全解決は ChatworkClient.gs 側で行うのが理想的ですが、
-    //   まずはAIが「人物に関する言及」だと認識できる形式にします
-    processedBody = processedBody.replace(/\[piconname:(\d+)\]/g, '(ユーザーID:$1)');
+    // 4. [piconname:xxxx] の実名解決
+    // IDを名前に置換することで、AIが人物間の関係性を正しく把握できるようにする
+    processedBody = processedBody.replace(/\[piconname:(\d+)\]/g, (match, id) => {
+      return nameMap[id] ? nameMap[id] : `(ユーザーID:${id})`;
+    });
 
-    // 5. [info] [title] タグのブロック整形
+    // 5. [info]タグ：前後に改行を入れて独立したブロックにする
     processedBody = processedBody.replace(/\[info\]([\s\S]*?)\[\/info\]/g, '\n$1\n');
+
+    // 6. [title]タグ：見出しとして強調し、直後に改行を挿入
     processedBody = processedBody.replace(/\[title\]([\s\S]*?)\[\/title\]/g, '【 $1 】\n');
 
-    // 6. [qt] 引用タグの整形
+    // 7. [qt] 引用タグの整形
+    // 各行の先頭に引用符を付与し、ドキュメント上の引用ブロックとして識別可能にする
     processedBody = processedBody.replace(/\[qt\]([\s\S]*?)\[\/qt\]/g, (match, p1) => {
       return '\n' + p1.split('\n').map(line => `> (引用): ${line}`).join('\n') + '\n';
     });
 
-    // 7. [download:xxxx] ファイルリンクの整形
+    // 8. [download:xxxx] ファイルリンクの整形
+    // AIが共有された資料名を重要なマイルストーンとして認識できるようにする
     processedBody = processedBody.replace(/\[download:\d+\](.*?)\[\/download\]/g, '（ファイル添付：$1）');
 
-    // 8. [hr] 横線の置換
+    // 9. [hr] 横線の置換
+    // 視覚的な区切りとして機能させるため、前後に改行を挿入
     processedBody = processedBody.replace(/\[hr\]/g, '\n----------------------------------------\n');
 
-    // 9. その他の残存ノイズタグ（picon, preview, deleted等）の削除
+    // 10. その他の残存ノイズタグ（picon, preview, deleted等）の削除
     processedBody = processedBody.replace(/\[picon:\d+\]|\[preview id=\d+\]|\[rp aid=\d+ to=\d+-\d+\]|\[deleted\]/g, '');
 
-    // 10. 仕上げ：連続改行の正規化
+    // 11. 仕上げ：過剰な空行（3行以上）を2行（1行空き）に正規化し、前後の空白を削除
+    // ドキュメントのレイアウトを美しく整え、AIのトークン効率を高める [cite: 5873, 5958]
     return processedBody.replace(/\n{3,}/g, '\n\n').trim();
   }
 

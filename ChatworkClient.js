@@ -9,11 +9,12 @@ const ChatworkClient = (() => {
    * @returns {Object[]} メッセージの配列
    */
   function getNewMessages(roomId) {
-    const apiToken = PropertiesService.getScriptProperties().getProperty('CHATWORK_API_TOKEN');
+  const keys = Config.getPropKeys();
+  const apiToken = PropertiesService.getScriptProperties().getProperty(keys.CW_TOKEN);
     if (!apiToken) throw new Error('CHATWORK_API_TOKEN が設定されていません。');
 
     // 最後に取得したメッセージIDを取得
-    const lastIdKey = `LAST_ID_${roomId}`;
+    const lastIdKey = keys.LAST_ID_PREFIX + roomId;
     const lastId = PropertiesService.getScriptProperties().getProperty(lastIdKey) || '0';
 
     const url = `https://api.chatwork.com/v2/rooms/${roomId}/messages?force=0`; // force=0で新着のみ（API側仕様）

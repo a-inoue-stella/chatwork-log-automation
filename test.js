@@ -3,3 +3,9 @@ function testTextProcessor() {
   const result = TextProcessor.process(rawMsg);
   console.log(result);
 }
+
+function testDocManager() {
+  const docId = "あなたのドキュメントID"; // 実際のIDに書き換えてください
+  const tabName = "テスト用タブ名"; // 手動で作ったタブ名
+  DocManager.append(docId, tabName, "これはDocManagerからのテスト投稿です。");
+}

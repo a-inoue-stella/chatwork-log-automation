@@ -13,6 +13,11 @@ function fetchAndStockChatwork() {
       rawMessages.forEach(msg => {
         // すでに ChatworkClient 内で処理済みの本文を使用
         const processedText = msg.processedBody;
+        // クレンジング後のテキストが空、あるいは改行・スペースのみの場合は処理をスキップ
+        if (!processedText || processedText.trim().length === 0) {
+          console.log(`空のメッセージをスキップしました (ID: ${msg.message_id})`);
+          return; 
+        }
         const timestamp = Utilities.formatDate(new Date(msg.send_time * 1000), "JST", "yyyy/MM/dd HH:mm");
         const senderName = msg.account.name;
         const finalContent = `[${timestamp}] ${senderName}:\n${processedText}\n`;

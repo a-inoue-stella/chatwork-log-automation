@@ -1,4 +1,15 @@
 /**
+ * ドキュメントオープン時に実行される関数
+ */
+function onOpen() {
+  DocumentApp.getUi()
+    .createMenu('Chatwork資産化') // メニュー名
+    .addItem('設定サイドバーを開く', 'showSidebar') // UiManager.gsの関数を呼ぶ
+    .addItem('今すぐ手動実行', 'fetchAndStockChatwork')
+    .addToUi();
+}
+
+/**
  * 定期実行されるメイン関数
  */
 function fetchAndStockChatwork() {

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+  <style>
+    body { padding: 15px; font-family: 'Google Sans', Roboto, Arial, sans-serif; color: #333; }
+    .section { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
+    .section-title { font-weight: bold; font-size: 13px; color: #202124; margin-bottom: 12px; display: flex; align-items: center; }
+    .section-title span { margin-left: 6px; }
+    
+    /* 入力・ボタンスタイル */
+    input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; }
+    button { cursor: pointer; font-weight: 500; border: none; border-radius: 4px; padding: 8px 16px; font-size: 12px; }
+    .btn-primary { background-color: #1a73e8; color: white; width: 100%; }
+    .btn-primary:hover { background-color: #1557b0; box-shadow: 0 1px 2px rgba(60,64,67,0.3); }
+    .btn-secondary { background-color: #fff; border: 1px solid #dadce0; color: #1a73e8; margin-top: 8px; width: 100%; }
+    .btn-danger { color: #d93025; background: none; padding: 4px; font-size: 16px; float: right; }
+
+    /* ルームリスト */
+    .room-item { background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #e8eaed; }
+    .room-label { font-size: 10px; color: #5f6368; font-weight: bold; }
+    .room-value { font-size: 12px; color: #3c4043; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* スケジュール（今回の追加箇所） */
+    .schedule-opt { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px dashed #eee; }
+    .schedule-opt:last-child { border-bottom: none; }
+    .schedule-label { margin-left: 10px; font-size: 12px; }
+    .schedule-time { margin-left: auto; font-size: 11px; color: #5f6368; background: #f1f3f4; padding: 2px 6px; border-radius: 10px; }
+    
+    /* ステータス表示 */
+    .status-msg { font-size: 11px; color: #137333; margin-top: 6px; height: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="section">
+    <div class="section-title">🔐 API設定</div>
+    <input type="password" id="apiToken" placeholder="Chatwork API Token">
+    <button class="btn-secondary" onclick="saveToken()">設定を保存</button>
+    <div id="tokenStatus" class="status-msg"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📁 監視ルーム管理</div>
+    <div id="roomList"></div>
+    
+    <div style="background: #fff; border: 1px dashed #ccc; padding: 10px; border-radius: 4px; margin-top: 10px;">
+      <input type="text" id="newRoomId" placeholder="ルームID (例: 123456)">
+      <input type="text" id="newTabName" placeholder="保存先タブ名 (例: A案件)">
+      <button class="btn-secondary" style="background:#f1f3f4; border:none; color:#333;" onclick="addRoom()">＋ リストに追加</button>
+    </div>
+    
+    <button class="btn-primary" style="margin-top: 12px;" onclick="saveRooms()">変更を反映する</button>
+    <div id="roomStatus" class="status-msg"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">⏰ 自動実行スケジュール</div>
+    <div style="margin-bottom: 10px; font-size: 11px; color: #666;">
+      チェックを入れた時間に、自動でログを取得・整形して追記します。
+    </div>
+
+    <div class="schedule-opt">
+      <input type="checkbox" id="scheduleMorning" checked>
+      <label for="scheduleMorning" class="schedule-label">朝の自動チェック</label>
+      <span class="schedule-time">09:00 〜 10:00</span>
+    </div>
+
+    <div class="schedule-opt">
+      <input type="checkbox" id="scheduleNoon">
+      <label for="scheduleNoon" class="schedule-label">昼の自動チェック</label>
+      <span class="schedule-time">12:00 〜 13:00</span>
+    </div>
+
+    <div class="schedule-opt">
+      <input type="checkbox" id="scheduleEvening" checked>
+      <label for="scheduleEvening" class="schedule-label">夕方の自動チェック</label>
+      <span class="schedule-time">17:00 〜 18:00</span>
+    </div>
+
+    <button class="btn-secondary" onclick="saveSchedule()">スケジュール保存</button>
+    <div id="scheduleStatus" class="status-msg"></div>
+  </div>
+
+  <div class="section" style="border-bottom: none;">
+    <div class="section-title">⚡ 手動アクション</div>
+    <button class="btn-primary" style="background-color: #188038;" onclick="runManual()">今すぐ同期を実行</button>
+    <div id="runStatus" class="status-msg"></div>
+  </div>
+
+  <script>
+    // --- 初期化と描画ロジック ---
+    window.onload = function() {
+      google.script.run.withSuccessHandler(initUi).getSettings();
+    };
+
+    function initUi(settings) {
+      if(settings.token) {
+        document.getElementById('apiToken').value = settings.token;
+        document.getElementById('tokenStatus').textContent = '接続済み';
+      }
+      if(settings.rooms) renderRooms(settings.rooms);
+      
+      // スケジュール設定の読み込み（モック用ロジック）
+      if(settings.schedule) {
+        document.getElementById('scheduleMorning').checked = settings.schedule.morning;
+        document.getElementById('scheduleNoon').checked = settings.schedule.noon;
+        document.getElementById('scheduleEvening').checked = settings.schedule.evening;
+      }
+    }
+
+    // ルームリスト操作
+    let currentRooms = [];
+    function renderRooms(rooms) {
+      currentRooms = rooms;
+      const container = document.getElementById('roomList');
+      container.innerHTML = '';
+      rooms.forEach((room, index) => {
+        const div = document.createElement('div');
+        div.className = 'room-item';
+        div.innerHTML = `
+          <button class="btn-danger" onclick="removeRoom(${index})">×</button>
+          <div class="room-label">ROOM ID</div>
+          <div class="room-value">${room.id}</div>
+          <div class="room-label">TAB NAME</div>
+          <div class="room-value">${room.tabName}</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function addRoom() {
+      const id = document.getElementById('newRoomId').value;
+      const tab = document.getElementById('newTabName').value;
+      if(!id || !tab) return;
+      currentRooms.push({ id, tabName: tab });
+      renderRooms(currentRooms);
+      document.getElementById('newRoomId').value = '';
+      document.getElementById('newTabName').value = '';
+    }
+
+    function removeRoom(index) {
+      currentRooms.splice(index, 1);
+      renderRooms(currentRooms);
+    }
+
+    // --- 保存アクション (GAS呼び出し) ---
+    function saveToken() {
+      const val = document.getElementById('apiToken').value;
+      google.script.run.withSuccessHandler(() => showStatus('tokenStatus', '保存しました')).saveApiToken(val);
+    }
+
+    function saveRooms() {
+      google.script.run.withSuccessHandler(() => showStatus('roomStatus', '反映しました')).saveRoomSettings(currentRooms);
+    }
+
+    function saveSchedule() {
+      // 見せかけの保存処理（チェック状態を取得）
+      const schedule = {
+        morning: document.getElementById('scheduleMorning').checked,
+        noon: document.getElementById('scheduleNoon').checked,
+        evening: document.getElementById('scheduleEvening').checked
+      };
+      // ※実際にはここでGASにトリガー設定を投げる
+      google.script.run.withSuccessHandler(() => showStatus('scheduleStatus', 'トリガーを設定しました')).saveSchedule(schedule); 
+    }
+
+    function runManual() {
+      document.getElementById('runStatus').textContent = '実行中...';
+      google.script.run.withSuccessHandler((res) => {
+        document.getElementById('runStatus').textContent = res;
+      }).runFromSidebar();
+    }
+
+    function showStatus(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      setTimeout(() => el.textContent = '', 3000);
+    }
+  </script>
+</body>
+</html>

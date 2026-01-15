@@ -11,8 +11,12 @@
     /* 入力・ボタンスタイル */
     input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; }
     button { cursor: pointer; font-weight: 500; border: none; border-radius: 4px; padding: 8px 16px; font-size: 12px; }
-    .btn-primary { background-color: #1a73e8; color: white; width: 100%; }
+    
+    /* ボタン共通スタイル（白背景・青文字・枠線あり） */
     .btn-secondary { background-color: #fff; border: 1px solid #dadce0; color: #1a73e8; margin-top: 8px; width: 100%; }
+    .btn-secondary:hover { background-color: #f8f9fa; }
+    .btn-secondary:active { background-color: #e8f0fe; }
+    
     .btn-danger { color: #d93025; background: none; padding: 4px; font-size: 16px; float: right; }
 
     /* ルームリスト */
@@ -42,12 +46,12 @@
     <div id="roomList"></div>
     
     <div style="background: #fff; border: 1px dashed #ccc; padding: 10px; border-radius: 4px; margin-top: 10px;">
-      <input type="text" id="newRoomId" placeholder="ルームID (例: 123456)">
+      <input type="text" id="newRoomId" placeholder="ルームID または URL (例: https://.../#!rid123456)">
       <input type="text" id="newTabName" placeholder="保存先タブ名 (例: A案件)">
-      <button class="btn-secondary" style="background:#f1f3f4; border:none; color:#333;" onclick="addRoom()">＋ リストに追加</button>
+      <button class="btn-secondary" style="font-weight: bold;" onclick="addRoom()">↓ リストに登録</button>
     </div>
     
-    <button class="btn-primary" style="margin-top: 12px;" onclick="saveRooms()">変更を反映する</button>
+    <button class="btn-secondary" style="margin-top: 12px; font-weight: bold;" onclick="saveRooms()">変更を反映する</button>
     <div id="roomStatus" class="status-msg"></div>
   </div>
 
@@ -68,7 +72,7 @@
 
   <div class="section" style="border-bottom: none;">
     <div class="section-title">⚡ 手動アクション</div>
-    <button class="btn-primary" style="background-color: #188038;" onclick="runManual()">今すぐ同期を実行</button>
+    <button class="btn-secondary" onclick="runManual()">今すぐ同期を実行</button>
     <div id="runStatus" class="status-msg"></div>
   </div>
 
@@ -89,7 +93,7 @@
       document.getElementById('autoTriggerSwitch').checked = settings.isTriggerActive;
     }
 
-    // --- トリガー制御 (New!) ---
+    // --- トリガー制御 ---
     function toggleTrigger() {
       const isChecked = document.getElementById('autoTriggerSwitch').checked;
       const statusEl = document.getElementById('triggerStatus');
@@ -100,8 +104,59 @@
       }).updateTrigger(isChecked);
     }
 
-    // --- 以下、既存ロジック ---
+    // --- ルーム管理ロジック ---
     let currentRooms = [];
+
+    // URLからIDを抜き出すヘルパー関数
+    function parseRoomId(input) {
+      if (!input) return null;
+      const str = input.toString().trim();
+
+      // パターンA: 数字のみ
+      if (/^\d+$/.test(str)) {
+        return str;
+      }
+
+      // パターンB: ChatworkのURL形式
+      const match = str.match(/rid(\d+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+
+      return null;
+    }
+
+    // 入力値を解析してから登録する
+    function addRoom() {
+      const rawInput = document.getElementById('newRoomId').value;
+      const tab = document.getElementById('newTabName').value;
+
+      // ID抽出
+      const validId = parseRoomId(rawInput);
+
+      if (!validId) {
+        if (!rawInput) return; // 空なら何もしない
+        alert('ルームID形式が正しくありません。\n数字のみ、またはChatworkのURLを入力してください。');
+        return;
+      }
+      if (!tab) {
+        alert('保存先の「タブ名」を入力してください。');
+        return;
+      }
+
+      currentRooms.push({ id: validId, tabName: tab });
+      renderRooms(currentRooms);
+      
+      // 入力欄クリア
+      document.getElementById('newRoomId').value = '';
+      document.getElementById('newTabName').value = '';
+    }
+
+    function removeRoom(index) {
+      currentRooms.splice(index, 1);
+      renderRooms(currentRooms);
+    }
+
     function renderRooms(rooms) {
       currentRooms = rooms;
       const container = document.getElementById('roomList');
@@ -120,32 +175,42 @@
       });
     }
 
-    function addRoom() {
-      const id = document.getElementById('newRoomId').value;
-      const tab = document.getElementById('newTabName').value;
-      if(!id || !tab) return;
-      currentRooms.push({ id, tabName: tab });
-      renderRooms(currentRooms);
-      document.getElementById('newRoomId').value = '';
-      document.getElementById('newTabName').value = '';
+    // 保存時のチェックロジック (登録忘れ防止)
+    function saveRooms() {
+      // 1. 入力フォームに「書きかけ」がないかチェック
+      const pendingId = document.getElementById('newRoomId').value.trim();
+      const pendingTab = document.getElementById('newTabName').value.trim();
+      
+      if (pendingId || pendingTab) {
+        alert('入力中のルーム情報があります。\n先に「↓ リストに登録」ボタンを押してリストに追加してください。');
+        return; 
+      }
+
+      // 2. 保存実行
+      const saveBtn = document.querySelector('button[onclick="saveRooms()"]');
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = '保存中...';
+      saveBtn.disabled = true;
+
+      google.script.run.withSuccessHandler(() => {
+        showStatus('roomStatus', '反映しました');
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+      }).saveRoomSettings(currentRooms);
     }
-    function removeRoom(index) {
-      currentRooms.splice(index, 1);
-      renderRooms(currentRooms);
-    }
+
     function saveToken() {
       const val = document.getElementById('apiToken').value;
       google.script.run.withSuccessHandler(() => showStatus('tokenStatus', '保存しました')).saveApiToken(val);
     }
-    function saveRooms() {
-      google.script.run.withSuccessHandler(() => showStatus('roomStatus', '反映しました')).saveRoomSettings(currentRooms);
-    }
+
     function runManual() {
       document.getElementById('runStatus').textContent = '実行中...';
       google.script.run.withSuccessHandler((res) => {
         document.getElementById('runStatus').textContent = res;
       }).runFromSidebar();
     }
+
     function showStatus(id, msg) {
       const el = document.getElementById(id);
       el.textContent = msg;

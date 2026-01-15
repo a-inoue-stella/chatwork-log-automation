@@ -42,6 +42,14 @@
   </div>
 
   <div class="section">
+    <div class="section-title">📊 エラーログ設定</div>
+    <div style="font-size:11px; color:#666; margin-bottom:5px;">エラー記録用スプレッドシートのURLまたはID</div>
+    <input type="text" id="logSheetId" placeholder="例: https://docs.google.com/spreadsheets/d/xxxxx/...">
+    <button class="btn-secondary" onclick="saveLogId()">保存する</button>
+    <div id="logStatus" class="status-msg"></div>
+  </div>
+
+  <div class="section">
     <div class="section-title">📁 監視ルーム管理</div>
     <div id="roomList"></div>
     
@@ -87,27 +95,37 @@
         document.getElementById('apiToken').value = settings.token;
         document.getElementById('tokenStatus').textContent = '接続済み';
       }
+      if(settings.logSheetId) {
+        document.getElementById('logSheetId').value = settings.logSheetId;
+      }
       if(settings.rooms) renderRooms(settings.rooms);
       
       // トリガー状態の反映
       document.getElementById('autoTriggerSwitch').checked = settings.isTriggerActive;
     }
 
-    // --- トリガー制御 ---
-    function toggleTrigger() {
-      const isChecked = document.getElementById('autoTriggerSwitch').checked;
-      const statusEl = document.getElementById('triggerStatus');
-      statusEl.textContent = '設定を更新中...';
+    // --- ID/URL解析ヘルパー関数群 ---
+
+    // スプレッドシートURLからIDを抽出
+    function parseSheetId(input) {
+      if (!input) return null;
+      const str = input.toString().trim();
       
-      google.script.run.withSuccessHandler((msg) => {
-        statusEl.textContent = msg;
-      }).updateTrigger(isChecked);
+      // パターンA: URL (https://.../d/xxxxx/...)
+      const match = str.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+      
+      // パターンB: IDのみ (英数字と記号)
+      if (/^[a-zA-Z0-9-_]+$/.test(str)) {
+        return str;
+      }
+      
+      return null;
     }
 
-    // --- ルーム管理ロジック ---
-    let currentRooms = [];
-
-    // URLからIDを抜き出すヘルパー関数
+    // Chatwork URLからルームIDを抽出
     function parseRoomId(input) {
       if (!input) return null;
       const str = input.toString().trim();
@@ -126,7 +144,54 @@
       return null;
     }
 
-    // 入力値を解析してから登録する
+    // --- 保存系 ---
+
+    function saveToken() {
+      const val = document.getElementById('apiToken').value;
+      google.script.run.withSuccessHandler(() => showStatus('tokenStatus', '保存しました')).saveApiToken(val);
+    }
+
+    // 修正: 解析ロジックを追加
+    function saveLogId() {
+      const rawInput = document.getElementById('logSheetId').value;
+      const validId = parseSheetId(rawInput);
+
+      if (!validId) {
+        if (!rawInput) return; // 空なら何もしない
+        alert('シートIDの形式が正しくありません。\nスプレッドシートのURL、またはIDを入力してください。');
+        return;
+      }
+      
+      // 画面上の表示もIDのみに整形すると親切
+      document.getElementById('logSheetId').value = validId;
+
+      google.script.run.withSuccessHandler(() => showStatus('logStatus', '保存しました')).saveLogSheetId(validId);
+    }
+
+    function saveRooms() {
+      // 1. 入力フォームに「書きかけ」がないかチェック
+      const pendingId = document.getElementById('newRoomId').value.trim();
+      const pendingTab = document.getElementById('newTabName').value.trim();
+      
+      if (pendingId || pendingTab) {
+        alert('入力中のルーム情報があります。\n先に「↓ リストに登録」ボタンを押してリストに追加してください。');
+        return; 
+      }
+
+      // 2. 保存実行
+      const saveBtn = document.querySelector('button[onclick="saveRooms()"]');
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = '保存中...';
+      saveBtn.disabled = true;
+
+      google.script.run.withSuccessHandler(() => {
+        showStatus('roomStatus', '反映しました');
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+      }).saveRoomSettings(currentRooms);
+    }
+
+    // --- ルーム追加ロジック ---
     function addRoom() {
       const rawInput = document.getElementById('newRoomId').value;
       const tab = document.getElementById('newTabName').value;
@@ -175,33 +240,12 @@
       });
     }
 
-    // 保存時のチェックロジック (登録忘れ防止)
-    function saveRooms() {
-      // 1. 入力フォームに「書きかけ」がないかチェック
-      const pendingId = document.getElementById('newRoomId').value.trim();
-      const pendingTab = document.getElementById('newTabName').value.trim();
-      
-      if (pendingId || pendingTab) {
-        alert('入力中のルーム情報があります。\n先に「↓ リストに登録」ボタンを押してリストに追加してください。');
-        return; 
-      }
-
-      // 2. 保存実行
-      const saveBtn = document.querySelector('button[onclick="saveRooms()"]');
-      const originalText = saveBtn.textContent;
-      saveBtn.textContent = '保存中...';
-      saveBtn.disabled = true;
-
-      google.script.run.withSuccessHandler(() => {
-        showStatus('roomStatus', '反映しました');
-        saveBtn.textContent = originalText;
-        saveBtn.disabled = false;
-      }).saveRoomSettings(currentRooms);
-    }
-
-    function saveToken() {
-      const val = document.getElementById('apiToken').value;
-      google.script.run.withSuccessHandler(() => showStatus('tokenStatus', '保存しました')).saveApiToken(val);
+    // --- その他 ---
+    function toggleTrigger() {
+      const isChecked = document.getElementById('autoTriggerSwitch').checked;
+      const statusEl = document.getElementById('triggerStatus');
+      statusEl.textContent = '設定を更新中...';
+      google.script.run.withSuccessHandler((msg) => { statusEl.textContent = msg; }).updateTrigger(isChecked);
     }
 
     function runManual() {

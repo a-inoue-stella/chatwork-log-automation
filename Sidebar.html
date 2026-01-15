@@ -7,13 +7,11 @@
     body { padding: 15px; font-family: 'Google Sans', Roboto, Arial, sans-serif; color: #333; }
     .section { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
     .section-title { font-weight: bold; font-size: 13px; color: #202124; margin-bottom: 12px; display: flex; align-items: center; }
-    .section-title span { margin-left: 6px; }
     
     /* 入力・ボタンスタイル */
     input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; }
     button { cursor: pointer; font-weight: 500; border: none; border-radius: 4px; padding: 8px 16px; font-size: 12px; }
     .btn-primary { background-color: #1a73e8; color: white; width: 100%; }
-    .btn-primary:hover { background-color: #1557b0; box-shadow: 0 1px 2px rgba(60,64,67,0.3); }
     .btn-secondary { background-color: #fff; border: 1px solid #dadce0; color: #1a73e8; margin-top: 8px; width: 100%; }
     .btn-danger { color: #d93025; background: none; padding: 4px; font-size: 16px; float: right; }
 
@@ -22,13 +20,11 @@
     .room-label { font-size: 10px; color: #5f6368; font-weight: bold; }
     .room-value { font-size: 12px; color: #3c4043; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    /* スケジュール（今回の追加箇所） */
-    .schedule-opt { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px dashed #eee; }
-    .schedule-opt:last-child { border-bottom: none; }
-    .schedule-label { margin-left: 10px; font-size: 12px; }
-    .schedule-time { margin-left: auto; font-size: 11px; color: #5f6368; background: #f1f3f4; padding: 2px 6px; border-radius: 10px; }
+    /* 自動実行スイッチエリア */
+    .auto-switch-area { background-color: #e8f0fe; padding: 15px; border-radius: 8px; border: 1px solid #d2e3fc; }
+    .switch-label { font-weight: bold; color: #174ea6; font-size: 12px; display: flex; align-items: center; }
+    .switch-desc { font-size: 11px; color: #1967d2; margin-top: 5px; line-height: 1.4; }
     
-    /* ステータス表示 */
     .status-msg { font-size: 11px; color: #137333; margin-top: 6px; height: 16px; text-align: center; }
   </style>
 </head>
@@ -56,31 +52,18 @@
   </div>
 
   <div class="section">
-    <div class="section-title">⏰ 自動実行スケジュール</div>
-    <div style="margin-bottom: 10px; font-size: 11px; color: #666;">
-      チェックを入れた時間に、自動でログを取得・整形して追記します。
+    <div class="section-title">⏰ 自動収集設定</div>
+    
+    <div class="auto-switch-area">
+      <div class="switch-label">
+        <input type="checkbox" id="autoTriggerSwitch" onchange="toggleTrigger()">
+        <label for="autoTriggerSwitch" style="margin-left: 8px; cursor: pointer;">自動収集を有効にする</label>
+      </div>
+      <div class="switch-desc">
+        ONにすると、業務時間に関わらず <strong>10分間隔</strong> で最新ログを取得し続けます。取りこぼしを防ぐ推奨設定です。
+      </div>
     </div>
-
-    <div class="schedule-opt">
-      <input type="checkbox" id="scheduleMorning" checked>
-      <label for="scheduleMorning" class="schedule-label">朝の自動チェック</label>
-      <span class="schedule-time">09:00 〜 10:00</span>
-    </div>
-
-    <div class="schedule-opt">
-      <input type="checkbox" id="scheduleNoon">
-      <label for="scheduleNoon" class="schedule-label">昼の自動チェック</label>
-      <span class="schedule-time">12:00 〜 13:00</span>
-    </div>
-
-    <div class="schedule-opt">
-      <input type="checkbox" id="scheduleEvening" checked>
-      <label for="scheduleEvening" class="schedule-label">夕方の自動チェック</label>
-      <span class="schedule-time">17:00 〜 18:00</span>
-    </div>
-
-    <button class="btn-secondary" onclick="saveSchedule()">スケジュール保存</button>
-    <div id="scheduleStatus" class="status-msg"></div>
+    <div id="triggerStatus" class="status-msg"></div>
   </div>
 
   <div class="section" style="border-bottom: none;">
@@ -90,7 +73,7 @@
   </div>
 
   <script>
-    // --- 初期化と描画ロジック ---
+    // 初期化
     window.onload = function() {
       google.script.run.withSuccessHandler(initUi).getSettings();
     };
@@ -102,15 +85,22 @@
       }
       if(settings.rooms) renderRooms(settings.rooms);
       
-      // スケジュール設定の読み込み（モック用ロジック）
-      if(settings.schedule) {
-        document.getElementById('scheduleMorning').checked = settings.schedule.morning;
-        document.getElementById('scheduleNoon').checked = settings.schedule.noon;
-        document.getElementById('scheduleEvening').checked = settings.schedule.evening;
-      }
+      // トリガー状態の反映
+      document.getElementById('autoTriggerSwitch').checked = settings.isTriggerActive;
     }
 
-    // ルームリスト操作
+    // --- トリガー制御 (New!) ---
+    function toggleTrigger() {
+      const isChecked = document.getElementById('autoTriggerSwitch').checked;
+      const statusEl = document.getElementById('triggerStatus');
+      statusEl.textContent = '設定を更新中...';
+      
+      google.script.run.withSuccessHandler((msg) => {
+        statusEl.textContent = msg;
+      }).updateTrigger(isChecked);
+    }
+
+    // --- 以下、既存ロジック ---
     let currentRooms = [];
     function renderRooms(rooms) {
       currentRooms = rooms;
@@ -139,40 +129,23 @@
       document.getElementById('newRoomId').value = '';
       document.getElementById('newTabName').value = '';
     }
-
     function removeRoom(index) {
       currentRooms.splice(index, 1);
       renderRooms(currentRooms);
     }
-
-    // --- 保存アクション (GAS呼び出し) ---
     function saveToken() {
       const val = document.getElementById('apiToken').value;
       google.script.run.withSuccessHandler(() => showStatus('tokenStatus', '保存しました')).saveApiToken(val);
     }
-
     function saveRooms() {
       google.script.run.withSuccessHandler(() => showStatus('roomStatus', '反映しました')).saveRoomSettings(currentRooms);
     }
-
-    function saveSchedule() {
-      // 見せかけの保存処理（チェック状態を取得）
-      const schedule = {
-        morning: document.getElementById('scheduleMorning').checked,
-        noon: document.getElementById('scheduleNoon').checked,
-        evening: document.getElementById('scheduleEvening').checked
-      };
-      // ※実際にはここでGASにトリガー設定を投げる
-      google.script.run.withSuccessHandler(() => showStatus('scheduleStatus', 'トリガーを設定しました')).saveSchedule(schedule); 
-    }
-
     function runManual() {
       document.getElementById('runStatus').textContent = '実行中...';
       google.script.run.withSuccessHandler((res) => {
         document.getElementById('runStatus').textContent = res;
       }).runFromSidebar();
     }
-
     function showStatus(id, msg) {
       const el = document.getElementById(id);
       el.textContent = msg;

@@ -1,48 +1,63 @@
 /**
- * ChatworkClient 名前空間: Chatwork APIとの通信を担う
+ * ChatworkClient クラス
+ * APIとの通信のみを担当し、ロジック（重複判定や保存）は持たない設計とする
  */
-const ChatworkClient = (() => {
+class ChatworkClient {
+  /**
+   * @param {string} token - Chatwork APIトークン
+   */
+  constructor(token) {
+    this.token = token;
+    this.baseUrl = 'https://api.chatwork.com/v2';
+  }
 
-  function getNewMessages(roomId) {
-    const keys = Config.getPropKeys();
-    const apiToken = PropertiesService.getScriptProperties().getProperty(keys.CW_TOKEN);
-    const lastIdKey = keys.LAST_ID_PREFIX + roomId;
-    const lastId = PropertiesService.getScriptProperties().getProperty(lastIdKey) || '0';
+  /**
+   * ルームのメッセージを取得する
+   * @param {string} roomId - ルームID
+   * @param {number} force - 0:未読のみ, 1:最新100件(推奨)
+   * @returns {Array} メッセージオブジェクトの配列
+   */
+  fetchMessages(roomId, force = 1) {
+    // 【変更点】
+    // 既存コードは force=0（未読のみ）でしたが、人間が既読をつけると
+    // ログが取れなくなるリスクがあるため、force=1（最新100件）を標準とします。
+    // 重複データは main.gs 側で message_id を見て弾くので安全です。
 
-    const url = `https://api.chatwork.com/v2/rooms/${roomId}/messages?force=0`;
+    if (!roomId) throw new Error('Room ID is required');
+
+    const url = `${this.baseUrl}/rooms/${roomId}/messages?force=${force}`;
+    
     const options = {
       method: 'get',
-      headers: { 'X-ChatWorkToken': apiToken },
+      headers: { 'X-ChatWorkToken': this.token },
       muteHttpExceptions: true
     };
 
     const response = UrlFetchApp.fetch(url, options);
-    if (response.getResponseCode() !== 200) return [];
+    const code = response.getResponseCode();
 
-    const messages = JSON.parse(response.getContentText());
-    
-    // 新着メッセージのみ抽出
-    const newMessages = messages.filter(msg => Number(msg.message_id) > Number(lastId));
-
-    if (newMessages.length > 0) {
-      // 1. 今回の取得分から「IDと名前」の対応表を作成
-      const nameMap = {};
-      messages.forEach(msg => {
-        nameMap[msg.account.account_id] = msg.account.name;
-      });
-
-      // 2. メッセージ本文内のIDを名前に置換する処理を TextProcessor に委ねる
-      newMessages.forEach(msg => {
-        // process関数の第2引数に nameMap を渡すように拡張します
-        msg.processedBody = TextProcessor.process(msg.body, nameMap);
-      });
-
-      const latestId = newMessages[newMessages.length - 1].message_id;
-      PropertiesService.getScriptProperties().setProperty(lastIdKey, latestId);
+    if (code === 200) {
+      const json = JSON.parse(response.getContentText());
+      return json; // 生のメッセージ配列を返す
+    } else if (code === 204) {
+      return []; // メッセージなし(正常)
+    } else {
+      // エラー時は詳細をログに出してスロー
+      console.error(`Chatwork API Error: ${code} RoomID: ${roomId}`);
+      throw new Error(`Chatwork API Error: ${code} ${response.getContentText()}`);
     }
-
-    return newMessages;
   }
-
-  return { getMessages: getNewMessages };
-})();
+  
+  /**
+   * 接続テスト用: 自分自身の情報を取得
+   */
+  getMe() {
+    const url = `${this.baseUrl}/me`;
+    const response = UrlFetchApp.fetch(url, { 
+      method: 'get',
+      headers: { 'X-ChatWorkToken': this.token },
+      muteHttpExceptions: true
+    });
+    return JSON.parse(response.getContentText());
+  }
+}

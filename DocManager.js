@@ -1,24 +1,25 @@
 /**
  * DocManager 名前空間: Googleドキュメントのタブ操作を担う
+ * メンテナンス性を重視し、ルームごとに「タブ」を分けて記録する
  */
 const DocManager = (() => {
 
   /**
    * 指定した名前のタブにテキストを追記する
-   * @param {string} docId - 対象ドキュメントのID
+   * @param {Document} doc - 対象のドキュメントオブジェクト
    * @param {string} tabName - 追記対象のタブ名（ルーム名）
    * @param {string} text - 追記する整形済みテキスト
    */
-  function appendTextToTab(docId, tabName, text) {
-    const doc = DocumentApp.openById(docId);
+  function appendTextToTab(doc, tabName, text) {
     const tabs = doc.getTabs();
     
     // タブを再帰的に探索して対象を見つける
     const targetTab = findTabByName(tabs, tabName);
 
     if (!targetTab) {
-      console.warn(`タブが見つかりません: ${tabName}`);
-      // 運用上のエラーとしてログを残すなどの処理が必要
+      console.warn(`[Warning] タブが見つかりません: "${tabName}"`);
+      // 運用回避策: タブがない場合はデフォルトのBody（最初のタブ）に警告付きで書き込むか、
+      // あるいは手動作成を促すためにスキップする。今回は安全のためスキップしログを残す。
       return;
     }
 
@@ -41,7 +42,7 @@ const DocManager = (() => {
       if (tab.getTitle() === name) {
         return tab;
       }
-      // 子タブがある場合は再帰的に探索（リファレンスの階層構造に対応）
+      // 子タブがある場合は再帰的に探索
       const childTabs = tab.getChildTabs();
       if (childTabs.length > 0) {
         const found = findTabByName(childTabs, name);

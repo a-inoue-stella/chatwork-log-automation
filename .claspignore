@@ -1,0 +1,3 @@
+# Exclude local config and test files from clasp push
+Config.js
+test.js
